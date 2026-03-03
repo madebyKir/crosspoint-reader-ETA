@@ -8,6 +8,28 @@
 
 class ReadingEtaTracker {
  public:
+  uint32_t getAvgMsPerPage() const {
+    if (validSamples < minSamplesForEta || emaSecondsPerPage <= 0.0f) return 0;
+    const float ms = emaSecondsPerPage * 1000.0f;
+    return static_cast<uint32_t>(ms + 0.5f);
+  }
+
+  void restoreAvgMsPerPage(const uint32_t avgMs) {
+    // sanity: не больше 10 минут на страницу
+    if (avgMs == 0 || avgMs > maxIntervalMs) return;
+    emaSecondsPerPage = static_cast<float>(avgMs) / 1000.0f;
+    validSamples = minSamplesForEta;  // чтобы ETA показывался сразу
+    // Важно: пауза сна не должна стать "временем чтения страницы"
+    hasLastPage = false;
+    lastPageKey = 0;
+    lastPageTurnTimeMs = 0;
+  }
+
+  void resetTimingAfterSleep() {
+    hasLastPage = false;
+    lastPageKey = 0;
+    lastPageTurnTimeMs = 0;
+  }
   std::optional<int> updateAndGetMinutes(const int sectionIndex, const int pageNumber, const int remainingPages) {
     const uint32_t now = millis();
     const uint32_t pageKey = makePageKey(sectionIndex, pageNumber);
