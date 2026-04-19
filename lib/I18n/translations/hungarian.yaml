@@ -290,3 +290,8 @@ STR_LINK: "[link]"
 STR_SCREENSHOT_BUTTON: "Képernyőkép készítése"
 STR_AUTO_TURN_ENABLED: "Automatikus lapozás bekapcsolva: "
 STR_AUTO_TURN_PAGES_PER_MIN: "Automatikus lapozás (oldal/perc)"
+
+STR_MARK_AS_READ: "Mark as read"
+STR_UNMARK_AS_READ: "Unmark as read"
+STR_RESET_PROGRESS: "Reset progress"
+STR_READ_COMPLETED: "Read ✓"

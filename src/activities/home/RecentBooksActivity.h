@@ -11,15 +11,23 @@
 
 class RecentBooksActivity final : public Activity {
  private:
+  static constexpr unsigned long LONG_PRESS_MS = 1000;
   ButtonNavigator buttonNavigator;
 
   size_t selectorIndex = 0;
+  bool contextMenuOpen = false;
+  bool lockConfirmLongPress = false;
+  int contextMenuIndex = 0;
 
   // Recent tab state
   std::vector<RecentBook> recentBooks;
 
   // Data loading
   void loadRecentBooks();
+  std::string getBookProgressStatus(const RecentBook& book) const;
+  void openContextMenu();
+  void closeContextMenu();
+  void confirmContextMenuAction();
 
  public:
   explicit RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
