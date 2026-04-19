@@ -291,3 +291,8 @@ STR_LINK: "[посилання]"
 STR_SCREENSHOT_BUTTON: "Знімок екрана"
 STR_AUTO_TURN_ENABLED: "Автоперегортання увімк: "
 STR_AUTO_TURN_PAGES_PER_MIN: "Автоперегортання (ст/хв)"
+
+STR_MARK_AS_READ: "Mark as read"
+STR_UNMARK_AS_READ: "Unmark as read"
+STR_RESET_PROGRESS: "Reset progress"
+STR_READ_COMPLETED: "Read ✓"

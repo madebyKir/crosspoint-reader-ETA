@@ -291,3 +291,8 @@ STR_OPDS_SERVER_URL: "URL OPDS сервера"
 STR_SCREENSHOT_BUTTON: "Сделать снимок экрана"
 STR_AUTO_TURN_ENABLED: "Автоперелистывание: "
 STR_AUTO_TURN_PAGES_PER_MIN: "Автоперелистывание (стр./мин)"
+
+STR_MARK_AS_READ: "Отметить как прочитано"
+STR_UNMARK_AS_READ: "Снять отметку «Прочитано»"
+STR_RESET_PROGRESS: "Сбросить прогресс"
+STR_READ_COMPLETED: "Прочитано ✓"
