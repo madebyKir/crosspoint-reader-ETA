@@ -12,12 +12,8 @@
 class RecentBooksActivity final : public Activity {
  private:
   enum class ContextAction {
-    Open,
     ToggleReadMark,
     ResetProgress,
-    BookInfo,
-    RemoveFromLibrary,
-    Cancel,
   };
 
   ButtonNavigator buttonNavigator;

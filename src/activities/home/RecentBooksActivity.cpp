@@ -78,6 +78,11 @@ void RecentBooksActivity::loop() {
   if (contextMenuOpen) {
     const auto actions = getContextActions();
     const int actionCount = static_cast<int>(actions.size());
+    if (actionCount == 0) {
+      contextMenuOpen = false;
+      requestUpdate();
+      return;
+    }
 
     buttonNavigator.onNextRelease([this, actionCount] {
       contextSelectedIndex = ButtonNavigator::nextIndex(static_cast<int>(contextSelectedIndex), actionCount);
@@ -146,24 +151,115 @@ void RecentBooksActivity::loop() {
 
 std::vector<RecentBooksActivity::ContextAction> RecentBooksActivity::getContextActions() const {
   if (recentBooks.empty() || selectorIndex >= recentBooks.size()) {
-    return {ContextAction::Cancel};
+    return {};
   }
 
-  return {ContextAction::Open,      ContextAction::ToggleReadMark, ContextAction::ResetProgress,
-          ContextAction::BookInfo,  ContextAction::RemoveFromLibrary, ContextAction::Cancel};
+  return {ContextAction::ToggleReadMark, ContextAction::ResetProgress};
 }
 
 const char* RecentBooksActivity::getContextActionLabel(const ContextAction action) const {
-  if (action == ContextAction::Open) return tr(STR_OPEN);
   if (action == ContextAction::ToggleReadMark) {
     const bool isRead =
         !recentBooks.empty() && selectorIndex < recentBooks.size() && recentBooks[selectorIndex].isMarkedAsRead;
     return isRead ? tr(STR_UNMARK_AS_READ) : tr(STR_MARK_AS_READ);
   }
-  if (action == ContextAction::ResetProgress) return tr(STR_RESET_PROGRESS);
-  if (action == ContextAction::BookInfo) return tr(STR_BOOK_INFO);
-  if (action == ContextAction::RemoveFromLibrary) return tr(STR_REMOVE_FROM_LIBRARY);
-  return tr(STR_CANCEL);
+  return tr(STR_RESET_PROGRESS);
+}
+
+int RecentBooksActivity::getBookProgressPercent(const RecentBook& book) const {
+  if (FsHelpers::hasEpubExtension(book.path)) {
+    Epub epub(book.path, "/.crosspoint");
+    if (!epub.load(false, true)) {
+      return 0;
+    }
+
+    FsFile progressFile;
+    if (!Storage.openFileForRead("RBA", epub.getCachePath() + "/progress.bin", progressFile)) {
+      return 0;
+    }
+
+    uint8_t progressData[6];
+    if (progressFile.read(progressData, sizeof(progressData)) != sizeof(progressData)) {
+      return 0;
+    }
+
+    const int currentSpineIndex = static_cast<int>(progressData[0] | (progressData[1] << 8));
+    const int currentPage = static_cast<int>(progressData[2] | (progressData[3] << 8));
+    const int pageCount = static_cast<int>(progressData[4] | (progressData[5] << 8));
+    if (currentSpineIndex < 0 || currentSpineIndex >= epub.getSpineItemsCount() || pageCount <= 0) {
+      return 0;
+    }
+
+    const float chapterProgress = static_cast<float>(currentPage) / static_cast<float>(pageCount);
+    const float progress = epub.calculateProgress(currentSpineIndex, chapterProgress);
+    return std::clamp(static_cast<int>(progress * 100.0f), 0, 100);
+  }
+
+  if (FsHelpers::hasXtcExtension(book.path)) {
+    Xtc xtc(book.path, "/.crosspoint");
+    if (!xtc.load()) {
+      return 0;
+    }
+
+    FsFile progressFile;
+    if (!Storage.openFileForRead("RBA", xtc.getCachePath() + "/progress.bin", progressFile)) {
+      return 0;
+    }
+
+    uint8_t progressData[4];
+    if (progressFile.read(progressData, sizeof(progressData)) != sizeof(progressData)) {
+      return 0;
+    }
+
+    const uint32_t currentPage = readLe32(progressData);
+    return static_cast<int>(xtc.calculateProgress(currentPage));
+  }
+
+  if (FsHelpers::hasTxtExtension(book.path) || FsHelpers::hasMarkdownExtension(book.path)) {
+    Txt txt(book.path, "/.crosspoint");
+    FsFile progressFile;
+    if (!Storage.openFileForRead("RBA", txt.getCachePath() + "/progress.bin", progressFile)) {
+      return 0;
+    }
+
+    uint8_t progressData[2];
+    if (progressFile.read(progressData, sizeof(progressData)) != sizeof(progressData)) {
+      return 0;
+    }
+    const int currentPage = static_cast<int>(progressData[0] | (progressData[1] << 8));
+
+    FsFile indexFile;
+    if (!Storage.openFileForRead("RBA", txt.getCachePath() + "/index.bin", indexFile)) {
+      return 0;
+    }
+
+    uint8_t header[30];
+    if (indexFile.read(header, sizeof(header)) != sizeof(header)) {
+      return 0;
+    }
+
+    const uint32_t magic = readLe32(header);
+    constexpr uint32_t TXTI_MAGIC = 0x49545854;  // "TXTI"
+    if (magic != TXTI_MAGIC) {
+      return 0;
+    }
+
+    const uint32_t totalPages = readLe32(header + 26);
+    if (totalPages == 0) {
+      return 0;
+    }
+    return std::clamp((currentPage + 1) * 100 / static_cast<int>(totalPages), 0, 100);
+  }
+
+  return 0;
+}
+
+std::string RecentBooksActivity::getBookProgressLabel(const RecentBook& book) const {
+  const int progress = getBookProgressPercent(book);
+  if (book.isMarkedAsRead || progress >= 100) {
+    return tr(STR_READ_COMPLETED);
+  }
+  return std::to_string(progress) + "%";
 }
 
 int RecentBooksActivity::getBookProgressPercent(const RecentBook& book) const {
@@ -287,10 +383,6 @@ void RecentBooksActivity::onContextAction(const ContextAction action) {
   RecentBook& selectedBook = recentBooks[selectorIndex];
 
   switch (action) {
-    case ContextAction::Open:
-      contextMenuOpen = false;
-      onSelectBook(selectedBook.path);
-      return;
     case ContextAction::ToggleReadMark: {
       const bool newReadState = !selectedBook.isMarkedAsRead;
       selectedBook.isMarkedAsRead = newReadState;
@@ -303,24 +395,6 @@ void RecentBooksActivity::onContextAction(const ContextAction action) {
       resetBookProgress(selectedBook.path);
       selectedBook.isMarkedAsRead = false;
       RECENT_BOOKS.setBookRead(selectedBook.path, false);
-      contextMenuOpen = false;
-      requestUpdate();
-      return;
-    case ContextAction::BookInfo:
-      contextMenuOpen = false;
-      bookInfoOpen = true;
-      requestUpdate();
-      return;
-    case ContextAction::RemoveFromLibrary:
-      RECENT_BOOKS.removeBook(selectedBook.path);
-      loadRecentBooks();
-      if (!recentBooks.empty() && selectorIndex >= recentBooks.size()) {
-        selectorIndex = recentBooks.size() - 1;
-      }
-      contextMenuOpen = false;
-      requestUpdate();
-      return;
-    case ContextAction::Cancel:
       contextMenuOpen = false;
       requestUpdate();
       return;
