@@ -412,8 +412,6 @@ void TxtReaderActivity::saveProgress() const {
     data[2] = 0;
     data[3] = 0;
     f.write(data, 4);
-    const uint8_t progressPercent = totalPages > 0 ? static_cast<uint8_t>((currentPage + 1) * 100 / totalPages) : 0;
-    RECENT_BOOKS.updateReadingProgress(txt->getPath(), progressPercent);
   }
 }
 

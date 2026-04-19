@@ -261,8 +261,3 @@ STR_BOOK_S_STYLE: "Estilo do livro"
 STR_EMBEDDED_STYLE: "Estilo embutido"
 STR_OPDS_SERVER_URL: "URL do servidor OPDS"
 STR_SCREENSHOT_BUTTON: "Capturar tela"
-
-STR_MARK_AS_READ: "Mark as read"
-STR_UNMARK_AS_READ: "Unmark as read"
-STR_RESET_PROGRESS: "Reset progress"
-STR_READ_COMPLETED: "Read ✓"

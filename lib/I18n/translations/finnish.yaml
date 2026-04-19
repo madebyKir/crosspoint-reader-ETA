@@ -260,8 +260,3 @@ STR_BOOK_S_STYLE: "Kirjan tyyli"
 STR_EMBEDDED_STYLE: "Upotettu tyyli"
 STR_OPDS_SERVER_URL: "OPDS-palvelimen osoite"
 STR_SCREENSHOT_BUTTON: "Ota kuvakaappaus"
-
-STR_MARK_AS_READ: "Mark as read"
-STR_UNMARK_AS_READ: "Unmark as read"
-STR_RESET_PROGRESS: "Reset progress"
-STR_READ_COMPLETED: "Read ✓"
