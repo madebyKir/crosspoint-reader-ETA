@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
-#include "ReadingEtaTracker.h"
 #include "activities/Activity.h"
 
 class TxtReaderActivity final : public Activity {
@@ -30,10 +29,9 @@ class TxtReaderActivity final : public Activity {
   int cachedOrientedMarginRight = 0;
   int cachedOrientedMarginBottom = 0;
   int cachedOrientedMarginLeft = 0;
-  ReadingEtaTracker etaTracker;
 
   void renderPage();
-  void renderStatusBar();
+  void renderStatusBar() const;
 
   void initializeReader();
   bool loadPageAtOffset(size_t offset, std::vector<std::string>& outLines, size_t& nextOffset);
