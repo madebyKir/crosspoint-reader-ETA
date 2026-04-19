@@ -65,14 +65,14 @@ bool RecentBooksStore::removeBook(const std::string& path) {
   return true;
 }
 
-bool RecentBooksStore::setBookRead(const std::string& path, const bool isMarkedAsRead) {
+bool RecentBooksStore::setBookRead(const std::string& path, const bool isRead) {
   const auto it =
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
   if (it == recentBooks.end()) {
     return false;
   }
 
-  it->isMarkedAsRead = isMarkedAsRead;
+  it->isRead = isRead;
   saveToFile();
   return true;
 }
