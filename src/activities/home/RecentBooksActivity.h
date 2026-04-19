@@ -11,15 +11,31 @@
 
 class RecentBooksActivity final : public Activity {
  private:
+  enum class ContextAction {
+    Open,
+    ToggleReadMark,
+    ResetProgress,
+    BookInfo,
+    RemoveFromLibrary,
+    Cancel,
+  };
+
   ButtonNavigator buttonNavigator;
 
   size_t selectorIndex = 0;
+  size_t contextSelectedIndex = 0;
+  bool contextMenuOpen = false;
+  bool bookInfoOpen = false;
 
   // Recent tab state
   std::vector<RecentBook> recentBooks;
 
   // Data loading
   void loadRecentBooks();
+  std::vector<ContextAction> getContextActions() const;
+  const char* getContextActionLabel(ContextAction action) const;
+  void onContextAction(ContextAction action);
+  void resetBookProgress(const std::string& path) const;
 
  public:
   explicit RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

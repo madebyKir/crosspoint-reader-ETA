@@ -30,7 +30,7 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   }
 
   // Add to front
-  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath});
+  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath, false});
 
   // Trim to max size
   if (recentBooks.size() > MAX_RECENT_BOOKS) {
@@ -51,6 +51,30 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
     book.coverBmpPath = coverBmpPath;
     saveToFile();
   }
+}
+
+bool RecentBooksStore::removeBook(const std::string& path) {
+  const auto it =
+      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
+  if (it == recentBooks.end()) {
+    return false;
+  }
+
+  recentBooks.erase(it);
+  saveToFile();
+  return true;
+}
+
+bool RecentBooksStore::setBookRead(const std::string& path, const bool isRead) {
+  const auto it =
+      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
+  if (it == recentBooks.end()) {
+    return false;
+  }
+
+  it->isRead = isRead;
+  saveToFile();
+  return true;
 }
 
 bool RecentBooksStore::saveToFile() const {
@@ -133,7 +157,7 @@ bool RecentBooksStore::loadFromBinaryFile() {
         std::string title, author;
         serialization::readString(inputFile, title);
         serialization::readString(inputFile, author);
-        recentBooks.push_back({path, title, author, ""});
+        recentBooks.push_back({path, title, author, "", false});
       } else {
         recentBooks.push_back(book);
       }
@@ -159,10 +183,11 @@ bool RecentBooksStore::loadFromBinaryFile() {
         continue;
       }
 
-      recentBooks.push_back({path, title, author, coverBmpPath});
+      recentBooks.push_back({path, title, author, coverBmpPath, false});
     }
 
     if (omitted > 0) {
+      // Explicitly close() file before saveToFile() rewrites the same file
       inputFile.close();
       saveToFile();
       LOG_DBG("RBS", "Omitted %u recent book(s) with missing title", omitted);
@@ -170,11 +195,9 @@ bool RecentBooksStore::loadFromBinaryFile() {
     }
   } else {
     LOG_ERR("RBS", "Deserialization failed: Unknown version %u", version);
-    inputFile.close();
     return false;
   }
 
-  inputFile.close();
   LOG_DBG("RBS", "Recent books loaded from binary file (%d entries)", static_cast<int>(recentBooks.size()));
   return true;
 }
