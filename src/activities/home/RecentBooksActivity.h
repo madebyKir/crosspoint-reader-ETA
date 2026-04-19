@@ -34,6 +34,8 @@ class RecentBooksActivity final : public Activity {
   void loadRecentBooks();
   std::vector<ContextAction> getContextActions() const;
   const char* getContextActionLabel(ContextAction action) const;
+  int getBookProgressPercent(const RecentBook& book) const;
+  std::string getBookProgressLabel(const RecentBook& book) const;
   void onContextAction(ContextAction action);
   void resetBookProgress(const std::string& path) const;
 

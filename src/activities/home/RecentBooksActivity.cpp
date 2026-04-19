@@ -6,6 +6,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Txt.h>
 #include <Xtc.h>
 
 #include <algorithm>
@@ -23,6 +24,11 @@ constexpr int CONTEXT_MENU_ROW_HEIGHT = 34;
 constexpr int CONTEXT_MENU_INNER_PADDING = 8;
 constexpr int CONTEXT_MENU_TOP_MARGIN = 28;
 constexpr int CONTEXT_MENU_BOTTOM_MARGIN = 28;
+
+uint32_t readLe32(const uint8_t* data) {
+  return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) | (static_cast<uint32_t>(data[2]) << 16) |
+         (static_cast<uint32_t>(data[3]) << 24);
+}
 }  // namespace
 
 void RecentBooksActivity::loadRecentBooks() {
@@ -150,13 +156,110 @@ std::vector<RecentBooksActivity::ContextAction> RecentBooksActivity::getContextA
 const char* RecentBooksActivity::getContextActionLabel(const ContextAction action) const {
   if (action == ContextAction::Open) return tr(STR_OPEN);
   if (action == ContextAction::ToggleReadMark) {
-    const bool isRead = !recentBooks.empty() && selectorIndex < recentBooks.size() && recentBooks[selectorIndex].isRead;
-    return isRead ? tr(STR_REMOVE_READ_MARK) : tr(STR_MARK_AS_READ);
+    const bool isRead =
+        !recentBooks.empty() && selectorIndex < recentBooks.size() && recentBooks[selectorIndex].isMarkedAsRead;
+    return isRead ? tr(STR_UNMARK_AS_READ) : tr(STR_MARK_AS_READ);
   }
   if (action == ContextAction::ResetProgress) return tr(STR_RESET_PROGRESS);
   if (action == ContextAction::BookInfo) return tr(STR_BOOK_INFO);
   if (action == ContextAction::RemoveFromLibrary) return tr(STR_REMOVE_FROM_LIBRARY);
   return tr(STR_CANCEL);
+}
+
+int RecentBooksActivity::getBookProgressPercent(const RecentBook& book) const {
+  if (FsHelpers::hasEpubExtension(book.path)) {
+    Epub epub(book.path, "/.crosspoint");
+    if (!epub.load(false, true)) {
+      return 0;
+    }
+
+    FsFile progressFile;
+    if (!Storage.openFileForRead("RBA", epub.getCachePath() + "/progress.bin", progressFile)) {
+      return 0;
+    }
+
+    uint8_t progressData[6];
+    if (progressFile.read(progressData, sizeof(progressData)) != sizeof(progressData)) {
+      return 0;
+    }
+
+    const int currentSpineIndex = static_cast<int>(progressData[0] | (progressData[1] << 8));
+    const int currentPage = static_cast<int>(progressData[2] | (progressData[3] << 8));
+    const int pageCount = static_cast<int>(progressData[4] | (progressData[5] << 8));
+    if (currentSpineIndex < 0 || currentSpineIndex >= epub.getSpineItemsCount() || pageCount <= 0) {
+      return 0;
+    }
+
+    const float chapterProgress = static_cast<float>(currentPage) / static_cast<float>(pageCount);
+    const float progress = epub.calculateProgress(currentSpineIndex, chapterProgress);
+    return std::clamp(static_cast<int>(progress * 100.0f), 0, 100);
+  }
+
+  if (FsHelpers::hasXtcExtension(book.path)) {
+    Xtc xtc(book.path, "/.crosspoint");
+    if (!xtc.load()) {
+      return 0;
+    }
+
+    FsFile progressFile;
+    if (!Storage.openFileForRead("RBA", xtc.getCachePath() + "/progress.bin", progressFile)) {
+      return 0;
+    }
+
+    uint8_t progressData[4];
+    if (progressFile.read(progressData, sizeof(progressData)) != sizeof(progressData)) {
+      return 0;
+    }
+
+    const uint32_t currentPage = readLe32(progressData);
+    return static_cast<int>(xtc.calculateProgress(currentPage));
+  }
+
+  if (FsHelpers::hasTxtExtension(book.path) || FsHelpers::hasMarkdownExtension(book.path)) {
+    Txt txt(book.path, "/.crosspoint");
+    FsFile progressFile;
+    if (!Storage.openFileForRead("RBA", txt.getCachePath() + "/progress.bin", progressFile)) {
+      return 0;
+    }
+
+    uint8_t progressData[2];
+    if (progressFile.read(progressData, sizeof(progressData)) != sizeof(progressData)) {
+      return 0;
+    }
+    const int currentPage = static_cast<int>(progressData[0] | (progressData[1] << 8));
+
+    FsFile indexFile;
+    if (!Storage.openFileForRead("RBA", txt.getCachePath() + "/index.bin", indexFile)) {
+      return 0;
+    }
+
+    uint8_t header[30];
+    if (indexFile.read(header, sizeof(header)) != sizeof(header)) {
+      return 0;
+    }
+
+    const uint32_t magic = readLe32(header);
+    constexpr uint32_t TXTI_MAGIC = 0x49545854;  // "TXTI"
+    if (magic != TXTI_MAGIC) {
+      return 0;
+    }
+
+    const uint32_t totalPages = readLe32(header + 26);
+    if (totalPages == 0) {
+      return 0;
+    }
+    return std::clamp((currentPage + 1) * 100 / static_cast<int>(totalPages), 0, 100);
+  }
+
+  return 0;
+}
+
+std::string RecentBooksActivity::getBookProgressLabel(const RecentBook& book) const {
+  const int progress = getBookProgressPercent(book);
+  if (book.isMarkedAsRead || progress >= 100) {
+    return tr(STR_READ_COMPLETED);
+  }
+  return std::to_string(progress) + "%";
 }
 
 void RecentBooksActivity::resetBookProgress(const std::string& path) const {
@@ -189,8 +292,8 @@ void RecentBooksActivity::onContextAction(const ContextAction action) {
       onSelectBook(selectedBook.path);
       return;
     case ContextAction::ToggleReadMark: {
-      const bool newReadState = !selectedBook.isRead;
-      selectedBook.isRead = newReadState;
+      const bool newReadState = !selectedBook.isMarkedAsRead;
+      selectedBook.isMarkedAsRead = newReadState;
       RECENT_BOOKS.setBookRead(selectedBook.path, newReadState);
       contextMenuOpen = false;
       requestUpdate();
@@ -198,6 +301,8 @@ void RecentBooksActivity::onContextAction(const ContextAction action) {
     }
     case ContextAction::ResetProgress:
       resetBookProgress(selectedBook.path);
+      selectedBook.isMarkedAsRead = false;
+      RECENT_BOOKS.setBookRead(selectedBook.path, false);
       contextMenuOpen = false;
       requestUpdate();
       return;
@@ -241,7 +346,8 @@ void RecentBooksActivity::render(RenderLock&&) {
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, recentBooks.size(), selectorIndex,
         [this](int index) { return recentBooks[index].title; }, [this](int index) { return recentBooks[index].author; },
-        [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); });
+        [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); },
+        [this](int index) { return getBookProgressLabel(recentBooks[index]); });
   }
 
   if (contextMenuOpen) {
