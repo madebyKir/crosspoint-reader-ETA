@@ -11,6 +11,11 @@ struct RecentBook {
   bool operator==(const RecentBook& other) const { return path == other.path; }
 };
 
+struct BookProgressStatus {
+  uint8_t progressPercent = 0;
+  bool isMarkedAsRead = false;
+};
+
 class RecentBooksStore;
 namespace JsonSettingsIO {
 bool loadRecentBooks(RecentBooksStore& store, const char* json);
@@ -47,6 +52,9 @@ class RecentBooksStore {
 
   bool loadFromFile();
   RecentBook getDataFromBook(std::string path) const;
+  BookProgressStatus getProgressStatus(const std::string& path) const;
+  bool setMarkedAsRead(const std::string& path, bool isMarkedAsRead) const;
+  bool resetProgress(const std::string& path) const;
 
  private:
   bool loadFromBinaryFile();
