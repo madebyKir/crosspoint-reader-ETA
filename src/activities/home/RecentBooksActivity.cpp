@@ -1,8 +1,12 @@
 #include "RecentBooksActivity.h"
 
+#include <Epub.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <Logging.h>
+#include <Xtc.h>
 
 #include <algorithm>
 
@@ -13,6 +17,12 @@
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
+
+constexpr int CONTEXT_MENU_WIDTH = 300;
+constexpr int CONTEXT_MENU_ROW_HEIGHT = 34;
+constexpr int CONTEXT_MENU_INNER_PADDING = 8;
+constexpr int CONTEXT_MENU_TOP_MARGIN = 28;
+constexpr int CONTEXT_MENU_BOTTOM_MARGIN = 28;
 }  // namespace
 
 void RecentBooksActivity::loadRecentBooks() {
@@ -42,15 +52,61 @@ void RecentBooksActivity::onEnter() {
 void RecentBooksActivity::onExit() {
   Activity::onExit();
   recentBooks.clear();
+  contextMenuOpen = false;
+  bookInfoOpen = false;
+  contextSelectedIndex = 0;
 }
 
 void RecentBooksActivity::loop() {
   const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, true);
 
+  if (bookInfoOpen) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      bookInfoOpen = false;
+      requestUpdate();
+    }
+    return;
+  }
+
+  if (contextMenuOpen) {
+    const auto actions = getContextActions();
+    const int actionCount = static_cast<int>(actions.size());
+
+    buttonNavigator.onNextRelease([this, actionCount] {
+      contextSelectedIndex = ButtonNavigator::nextIndex(static_cast<int>(contextSelectedIndex), actionCount);
+      requestUpdate();
+    });
+
+    buttonNavigator.onPreviousRelease([this, actionCount] {
+      contextSelectedIndex = ButtonNavigator::previousIndex(static_cast<int>(contextSelectedIndex), actionCount);
+      requestUpdate();
+    });
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      onContextAction(actions[contextSelectedIndex]);
+      return;
+    }
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      contextMenuOpen = false;
+      requestUpdate();
+      return;
+    }
+
+    return;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (!recentBooks.empty() && selectorIndex < static_cast<int>(recentBooks.size())) {
-      LOG_DBG("RBA", "Selected recent book: %s", recentBooks[selectorIndex].path.c_str());
-      onSelectBook(recentBooks[selectorIndex].path);
+      if (mappedInput.getHeldTime() >= GO_HOME_MS) {
+        contextMenuOpen = true;
+        contextSelectedIndex = 0;
+        requestUpdate();
+      } else {
+        LOG_DBG("RBA", "Selected recent book: %s", recentBooks[selectorIndex].path.c_str());
+        onSelectBook(recentBooks[selectorIndex].path);
+      }
       return;
     }
   }
@@ -82,6 +138,90 @@ void RecentBooksActivity::loop() {
   });
 }
 
+std::vector<RecentBooksActivity::ContextAction> RecentBooksActivity::getContextActions() const {
+  if (recentBooks.empty() || selectorIndex >= recentBooks.size()) {
+    return {ContextAction::Cancel};
+  }
+
+  return {ContextAction::Open,      ContextAction::ToggleReadMark, ContextAction::ResetProgress,
+          ContextAction::BookInfo,  ContextAction::RemoveFromLibrary, ContextAction::Cancel};
+}
+
+const char* RecentBooksActivity::getContextActionLabel(const ContextAction action) const {
+  if (action == ContextAction::Open) return tr(STR_OPEN);
+  if (action == ContextAction::ToggleReadMark) {
+    const bool isRead = !recentBooks.empty() && selectorIndex < recentBooks.size() && recentBooks[selectorIndex].isRead;
+    return isRead ? tr(STR_REMOVE_READ_MARK) : tr(STR_MARK_AS_READ);
+  }
+  if (action == ContextAction::ResetProgress) return tr(STR_RESET_PROGRESS);
+  if (action == ContextAction::BookInfo) return tr(STR_BOOK_INFO);
+  if (action == ContextAction::RemoveFromLibrary) return tr(STR_REMOVE_FROM_LIBRARY);
+  return tr(STR_CANCEL);
+}
+
+void RecentBooksActivity::resetBookProgress(const std::string& path) const {
+  if (FsHelpers::hasEpubExtension(path)) {
+    Epub(path, "/.crosspoint").clearCache();
+    return;
+  }
+
+  if (FsHelpers::hasXtcExtension(path)) {
+    Xtc(path, "/.crosspoint").clearCache();
+    return;
+  }
+
+  // TODO: add explicit progress reset for TXT/MD once a dedicated API is available.
+  LOG_DBG("RBA", "No explicit progress reset implementation for: %s", path.c_str());
+}
+
+void RecentBooksActivity::onContextAction(const ContextAction action) {
+  if (recentBooks.empty() || selectorIndex >= recentBooks.size()) {
+    contextMenuOpen = false;
+    requestUpdate();
+    return;
+  }
+
+  RecentBook& selectedBook = recentBooks[selectorIndex];
+
+  switch (action) {
+    case ContextAction::Open:
+      contextMenuOpen = false;
+      onSelectBook(selectedBook.path);
+      return;
+    case ContextAction::ToggleReadMark: {
+      const bool newReadState = !selectedBook.isRead;
+      selectedBook.isRead = newReadState;
+      RECENT_BOOKS.setBookRead(selectedBook.path, newReadState);
+      contextMenuOpen = false;
+      requestUpdate();
+      return;
+    }
+    case ContextAction::ResetProgress:
+      resetBookProgress(selectedBook.path);
+      contextMenuOpen = false;
+      requestUpdate();
+      return;
+    case ContextAction::BookInfo:
+      contextMenuOpen = false;
+      bookInfoOpen = true;
+      requestUpdate();
+      return;
+    case ContextAction::RemoveFromLibrary:
+      RECENT_BOOKS.removeBook(selectedBook.path);
+      loadRecentBooks();
+      if (!recentBooks.empty() && selectorIndex >= recentBooks.size()) {
+        selectorIndex = recentBooks.size() - 1;
+      }
+      contextMenuOpen = false;
+      requestUpdate();
+      return;
+    case ContextAction::Cancel:
+      contextMenuOpen = false;
+      requestUpdate();
+      return;
+  }
+}
+
 void RecentBooksActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
@@ -104,8 +244,52 @@ void RecentBooksActivity::render(RenderLock&&) {
         [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); });
   }
 
+  if (contextMenuOpen) {
+    const auto actions = getContextActions();
+    const int menuItemCount = static_cast<int>(actions.size());
+    const int menuHeight = menuItemCount * CONTEXT_MENU_ROW_HEIGHT + CONTEXT_MENU_INNER_PADDING * 2;
+    const int menuWidth = std::min(CONTEXT_MENU_WIDTH, pageWidth - metrics.contentSidePadding * 2);
+    const int menuX = (pageWidth - menuWidth) / 2;
+    const int maxY = pageHeight - menuHeight - CONTEXT_MENU_BOTTOM_MARGIN;
+    const int menuY = std::max(CONTEXT_MENU_TOP_MARGIN, maxY / 2);
+
+    renderer.fillRect(menuX, menuY, menuWidth, menuHeight, false);
+    renderer.drawRect(menuX, menuY, menuWidth, menuHeight, true);
+
+    for (int i = 0; i < menuItemCount; i++) {
+      const int rowY = menuY + CONTEXT_MENU_INNER_PADDING + i * CONTEXT_MENU_ROW_HEIGHT;
+      const bool selected = i == static_cast<int>(contextSelectedIndex);
+      renderer.fillRect(menuX + CONTEXT_MENU_INNER_PADDING, rowY, menuWidth - CONTEXT_MENU_INNER_PADDING * 2,
+                        CONTEXT_MENU_ROW_HEIGHT, selected);
+      renderer.drawText(UI_10_FONT_ID, menuX + CONTEXT_MENU_INNER_PADDING + 8,
+                        rowY + (CONTEXT_MENU_ROW_HEIGHT - renderer.getLineHeight(UI_10_FONT_ID)) / 2,
+                        getContextActionLabel(actions[i]), !selected);
+    }
+  }
+
+  if (bookInfoOpen && !recentBooks.empty() && selectorIndex < recentBooks.size()) {
+    const RecentBook& selectedBook = recentBooks[selectorIndex];
+    const int popupWidth = pageWidth - metrics.contentSidePadding * 2;
+    const int popupHeight = 144;
+    const int popupX = metrics.contentSidePadding;
+    const int popupY = (pageHeight - popupHeight) / 2;
+    const int lineStep = renderer.getLineHeight(UI_10_FONT_ID) + 2;
+
+    renderer.fillRect(popupX, popupY, popupWidth, popupHeight, false);
+    renderer.drawRect(popupX, popupY, popupWidth, popupHeight, true);
+
+    renderer.drawText(UI_10_FONT_ID, popupX + 8, popupY + 8, tr(STR_BOOK_INFO), true);
+    renderer.drawText(SMALL_FONT_ID, popupX + 8, popupY + 8 + lineStep, selectedBook.title.c_str(), true);
+    renderer.drawText(SMALL_FONT_ID, popupX + 8, popupY + 8 + lineStep * 2, selectedBook.author.c_str(), true);
+    renderer.drawText(SMALL_FONT_ID, popupX + 8, popupY + 8 + lineStep * 3, selectedBook.path.c_str(), true);
+  }
+
   // Help text
-  const auto labels = mappedInput.mapLabels(tr(STR_HOME), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = contextMenuOpen
+                          ? mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_CONFIRM), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
+                          : bookInfoOpen ? mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_CLOSE), "", "")
+                                         : mappedInput.mapLabels(tr(STR_HOME), tr(STR_OPEN), tr(STR_DIR_UP),
+                                                                 tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
