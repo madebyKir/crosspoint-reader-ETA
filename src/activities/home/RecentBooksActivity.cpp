@@ -287,7 +287,7 @@ void RecentBooksActivity::render(RenderLock&&) {
   // Help text
   const auto labels = contextMenuOpen
                           ? mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_CONFIRM), tr(STR_DIR_UP), tr(STR_DIR_DOWN))
-                          : bookInfoOpen ? mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_CONFIRM), "", "")
+                          : bookInfoOpen ? mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_CLOSE), "", "")
                                          : mappedInput.mapLabels(tr(STR_HOME), tr(STR_OPEN), tr(STR_DIR_UP),
                                                                  tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
