@@ -58,7 +58,7 @@ void EpubReaderActivity::onEnter() {
 
   FsFile f;
   if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {
-    uint8_t data[10] = {0};
+    uint8_t data[12] = {0};
     const int dataSize = f.read(data, sizeof(data));
 
     if (dataSize >= 4) {
@@ -79,6 +79,10 @@ void EpubReaderActivity::onEnter() {
       etaTracker.restoreAvgMsPerPage(ms);
     } else {
       etaTracker.resetTimingAfterSleep();
+    }
+
+    if (dataSize >= 12) {
+      isMarkedAsRead = data[11] != 0;
     }
 
     f.close();
@@ -700,7 +704,7 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
 void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
   FsFile f;
   if (Storage.openFileForWrite("ERS", epub->getCachePath() + "/progress.bin", f)) {
-    uint8_t data[10];
+    uint8_t data[12];
     data[0] = currentSpineIndex & 0xFF;
     data[1] = (currentSpineIndex >> 8) & 0xFF;
     data[2] = currentPage & 0xFF;
@@ -713,6 +717,10 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
     data[7] = (avgMs >> 8) & 0xFF;
     data[8] = (avgMs >> 16) & 0xFF;
     data[9] = (avgMs >> 24) & 0xFF;
+    const float chapterProgress = pageCount > 0 ? static_cast<float>(currentPage) / static_cast<float>(pageCount) : 0.0f;
+    const float progress = epub->calculateProgress(spineIndex, chapterProgress) * 100.0f;
+    data[10] = static_cast<uint8_t>(clampPercent(static_cast<int>(progress + 0.5f)));
+    data[11] = isMarkedAsRead ? 1 : 0;
 
     f.write(data, sizeof(data));
     f.close();

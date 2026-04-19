@@ -13,6 +13,7 @@ class TxtReaderActivity final : public Activity {
 
   int currentPage = 0;
   int totalPages = 1;
+  bool isMarkedAsRead = false;
   int pagesUntilFullRefresh = 0;
 
   // Streaming text reader - stores file offsets for each page

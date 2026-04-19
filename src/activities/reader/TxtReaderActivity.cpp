@@ -406,26 +406,34 @@ void TxtReaderActivity::renderStatusBar() {
 void TxtReaderActivity::saveProgress() const {
   FsFile f;
   if (Storage.openFileForWrite("TRS", txt->getCachePath() + "/progress.bin", f)) {
-    uint8_t data[4];
+    uint8_t data[6];
     data[0] = currentPage & 0xFF;
     data[1] = (currentPage >> 8) & 0xFF;
     data[2] = 0;
     data[3] = 0;
-    f.write(data, 4);
+    const int safeTotalPages = std::max(1, totalPages);
+    const int progress = ((currentPage + 1) * 100) / safeTotalPages;
+    data[4] = static_cast<uint8_t>(std::max(0, std::min(100, progress)));
+    data[5] = isMarkedAsRead ? 1 : 0;
+    f.write(data, sizeof(data));
   }
 }
 
 void TxtReaderActivity::loadProgress() {
   FsFile f;
   if (Storage.openFileForRead("TRS", txt->getCachePath() + "/progress.bin", f)) {
-    uint8_t data[4];
-    if (f.read(data, 4) == 4) {
+    uint8_t data[6] = {0};
+    const int readSize = f.read(data, sizeof(data));
+    if (readSize >= 4) {
       currentPage = data[0] + (data[1] << 8);
       if (currentPage >= totalPages) {
         currentPage = totalPages - 1;
       }
       if (currentPage < 0) {
         currentPage = 0;
+      }
+      if (readSize >= 6) {
+        isMarkedAsRead = data[5] != 0;
       }
       LOG_DBG("TRS", "Loaded progress: page %d/%d", currentPage, totalPages);
     }

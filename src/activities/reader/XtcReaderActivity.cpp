@@ -12,6 +12,8 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <algorithm>
+
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
@@ -329,12 +331,15 @@ void XtcReaderActivity::renderPage() {
 void XtcReaderActivity::saveProgress() const {
   FsFile f;
   if (Storage.openFileForWrite("XTR", xtc->getCachePath() + "/progress.bin", f)) {
-    uint8_t data[4];
+    uint8_t data[6];
     data[0] = currentPage & 0xFF;
     data[1] = (currentPage >> 8) & 0xFF;
     data[2] = (currentPage >> 16) & 0xFF;
     data[3] = (currentPage >> 24) & 0xFF;
-    f.write(data, 4);
+    data[4] = xtc->getPageCount() > 0 ? static_cast<uint8_t>(std::min(100UL, (currentPage * 100UL) / xtc->getPageCount()))
+                                      : 0;
+    data[5] = isMarkedAsRead ? 1 : 0;
+    f.write(data, sizeof(data));
     f.close();
   }
 }
@@ -342,14 +347,18 @@ void XtcReaderActivity::saveProgress() const {
 void XtcReaderActivity::loadProgress() {
   FsFile f;
   if (Storage.openFileForRead("XTR", xtc->getCachePath() + "/progress.bin", f)) {
-    uint8_t data[4];
-    if (f.read(data, 4) == 4) {
+    uint8_t data[6] = {0};
+    const int readSize = f.read(data, sizeof(data));
+    if (readSize >= 4) {
       currentPage = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
       LOG_DBG("XTR", "Loaded progress: page %lu", currentPage);
 
       // Validate page number
       if (currentPage >= xtc->getPageCount()) {
         currentPage = 0;
+      }
+      if (readSize >= 6) {
+        isMarkedAsRead = data[5] != 0;
       }
     }
     f.close();

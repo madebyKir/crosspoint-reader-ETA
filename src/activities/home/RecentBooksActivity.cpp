@@ -13,12 +13,15 @@
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
+constexpr int MENU_ITEM_COUNT = 2;
 }  // namespace
 
 void RecentBooksActivity::loadRecentBooks() {
   recentBooks.clear();
+  progressStatuses.clear();
   const auto& books = RECENT_BOOKS.getBooks();
   recentBooks.reserve(books.size());
+  progressStatuses.reserve(books.size());
 
   for (const auto& book : books) {
     // Skip if file no longer exists
@@ -26,6 +29,7 @@ void RecentBooksActivity::loadRecentBooks() {
       continue;
     }
     recentBooks.push_back(book);
+    progressStatuses.push_back(RECENT_BOOKS.getProgressStatus(book.path));
   }
 }
 
@@ -36,19 +40,112 @@ void RecentBooksActivity::onEnter() {
   loadRecentBooks();
 
   selectorIndex = 0;
+  contextMenuOpen = false;
+  contextMenuIndex = 0;
+  ignoreConfirmUntilRelease = false;
+  lockLongPressConfirm = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
 }
 
 void RecentBooksActivity::onExit() {
   Activity::onExit();
   recentBooks.clear();
+  progressStatuses.clear();
+}
+
+void RecentBooksActivity::openContextMenu() {
+  contextMenuOpen = true;
+  contextMenuIndex = 0;
+  ignoreConfirmUntilRelease = true;
+  requestUpdate();
+}
+
+void RecentBooksActivity::closeContextMenu() {
+  contextMenuOpen = false;
+  contextMenuIndex = 0;
+  requestUpdate();
+}
+
+void RecentBooksActivity::applyContextAction() {
+  if (recentBooks.empty() || selectorIndex >= recentBooks.size() || selectorIndex >= progressStatuses.size()) {
+    closeContextMenu();
+    return;
+  }
+
+  auto& status = progressStatuses[selectorIndex];
+  const auto& book = recentBooks[selectorIndex];
+  if (contextMenuIndex == 0) {
+    const bool nextMarked = !status.isMarkedAsRead;
+    if (RECENT_BOOKS.setMarkedAsRead(book.path, nextMarked)) {
+      status.isMarkedAsRead = nextMarked;
+    }
+  } else if (contextMenuIndex == 1) {
+    if (RECENT_BOOKS.resetProgress(book.path)) {
+      status.progressPercent = 0;
+      status.isMarkedAsRead = false;
+    }
+  }
+  closeContextMenu();
+}
+
+std::string RecentBooksActivity::getProgressText(const size_t index) const {
+  if (index >= progressStatuses.size()) {
+    return "0%";
+  }
+  const auto& status = progressStatuses[index];
+  if (status.isMarkedAsRead || status.progressPercent >= 100) {
+    return tr(STR_READ_COMPLETED);
+  }
+  return std::to_string(status.progressPercent) + "%";
 }
 
 void RecentBooksActivity::loop() {
   const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, true);
 
+  if (lockLongPressConfirm && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    lockLongPressConfirm = false;
+    return;
+  }
+
+  if (contextMenuOpen && ignoreConfirmUntilRelease) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      ignoreConfirmUntilRelease = false;
+    }
+    return;
+  }
+
+  if (!contextMenuOpen && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+      mappedInput.getHeldTime() >= GO_HOME_MS && !recentBooks.empty()) {
+    openContextMenu();
+    return;
+  }
+
+  if (contextMenuOpen) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      closeContextMenu();
+      return;
+    }
+
+    buttonNavigator.onNextRelease([this] {
+      contextMenuIndex = (contextMenuIndex + 1) % MENU_ITEM_COUNT;
+      requestUpdate();
+    });
+    buttonNavigator.onPreviousRelease([this] {
+      contextMenuIndex = (contextMenuIndex + MENU_ITEM_COUNT - 1) % MENU_ITEM_COUNT;
+      requestUpdate();
+    });
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      applyContextAction();
+      return;
+    }
+
+    return;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    if (!recentBooks.empty() && selectorIndex < static_cast<int>(recentBooks.size())) {
+    if (mappedInput.getHeldTime() < GO_HOME_MS && !recentBooks.empty() &&
+        selectorIndex < static_cast<int>(recentBooks.size())) {
       LOG_DBG("RBA", "Selected recent book: %s", recentBooks[selectorIndex].path.c_str());
       onSelectBook(recentBooks[selectorIndex].path);
       return;
@@ -101,11 +198,35 @@ void RecentBooksActivity::render(RenderLock&&) {
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, recentBooks.size(), selectorIndex,
         [this](int index) { return recentBooks[index].title; }, [this](int index) { return recentBooks[index].author; },
-        [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); });
+        [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); },
+        [this](int index) { return getProgressText(static_cast<size_t>(index)); }, false);
+
+  }
+
+  if (contextMenuOpen) {
+    const char* menuItems[MENU_ITEM_COUNT] = {progressStatuses[selectorIndex].isMarkedAsRead ? tr(STR_UNMARK_AS_READ)
+                                                                                              : tr(STR_MARK_AS_READ),
+                                              tr(STR_RESET_PROGRESS)};
+    constexpr int popupWidth = 320;
+    constexpr int popupHeight = 120;
+    const int popupX = (pageWidth - popupWidth) / 2;
+    const int popupY = (pageHeight - popupHeight) / 2;
+    renderer.fillRect(popupX, popupY, popupWidth, popupHeight, false);
+    renderer.drawRect(popupX, popupY, popupWidth, popupHeight);
+
+    for (int i = 0; i < MENU_ITEM_COUNT; i++) {
+      const int rowY = popupY + 16 + i * 40;
+      if (contextMenuIndex == static_cast<size_t>(i)) {
+        renderer.fillRect(popupX + 8, rowY - 4, popupWidth - 16, 28);
+      }
+      renderer.drawText(UI_10_FONT_ID, popupX + 16, rowY, menuItems[i], contextMenuIndex != static_cast<size_t>(i));
+    }
   }
 
   // Help text
-  const auto labels = mappedInput.mapLabels(tr(STR_HOME), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(contextMenuOpen ? tr(STR_BACK) : tr(STR_HOME),
+                                            contextMenuOpen ? tr(STR_SELECT) : tr(STR_OPEN), tr(STR_DIR_UP),
+                                            tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
