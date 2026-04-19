@@ -336,7 +336,6 @@ void XtcReaderActivity::saveProgress() const {
     data[3] = (currentPage >> 24) & 0xFF;
     f.write(data, 4);
     f.close();
-    RECENT_BOOKS.updateReadingProgress(xtc->getPath(), xtc->calculateProgress(currentPage));
   }
 }
 

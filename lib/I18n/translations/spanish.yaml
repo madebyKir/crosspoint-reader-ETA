@@ -290,8 +290,3 @@ STR_LINK: "[enlace]"
 STR_SCREENSHOT_BUTTON: "Tomar captura de pantalla"
 STR_AUTO_TURN_ENABLED: "Páginas por minuto: "
 STR_AUTO_TURN_PAGES_PER_MIN: "Leer páginas por minuto"
-
-STR_MARK_AS_READ: "Mark as read"
-STR_UNMARK_AS_READ: "Unmark as read"
-STR_RESET_PROGRESS: "Reset progress"
-STR_READ_COMPLETED: "Read ✓"

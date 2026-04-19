@@ -320,8 +320,3 @@ STR_UPTIME: "Laufzeit"
 STR_CHARGING: "Lädt"
 STR_GATHERING_DATA: "Daten werden gesammelt..."
 STR_READING: "Lese..."
-
-STR_MARK_AS_READ: "Mark as read"
-STR_UNMARK_AS_READ: "Unmark as read"
-STR_RESET_PROGRESS: "Reset progress"
-STR_READ_COMPLETED: "Read ✓"
