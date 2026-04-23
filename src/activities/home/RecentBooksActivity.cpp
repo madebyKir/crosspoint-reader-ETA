@@ -203,23 +203,50 @@ void RecentBooksActivity::render(RenderLock&&) {
 
   }
 
-  if (contextMenuOpen) {
-    const char* menuItems[MENU_ITEM_COUNT] = {progressStatuses[selectorIndex].isMarkedAsRead ? tr(STR_UNMARK_AS_READ)
-                                                                                              : tr(STR_MARK_AS_READ),
-                                              tr(STR_RESET_PROGRESS)};
+  if (contextMenuOpen && !recentBooks.empty() && selectorIndex < recentBooks.size()) {
+    const char* menuItems[MENU_ITEM_COUNT] = {
+        progressStatuses[selectorIndex].isMarkedAsRead ? tr(STR_UNMARK_AS_READ) : tr(STR_MARK_AS_READ),
+        tr(STR_RESET_PROGRESS)};
+
     constexpr int popupWidth = 320;
-    constexpr int popupHeight = 120;
-    const int popupX = (pageWidth - popupWidth) / 2;
-    const int popupY = (pageHeight - popupHeight) / 2;
+    constexpr int rowHeight = 28;
+    constexpr int innerPadding = 8;
+    constexpr int estimatedRowHeight = 72; 
+
+    const int popupHeight = MENU_ITEM_COUNT * rowHeight + innerPadding * 2;
+
+    int popupX = pageWidth - popupWidth - metrics.contentSidePadding;
+    int popupY = contentTop + static_cast<int>(selectorIndex) * estimatedRowHeight + 6;
+
+    const int minPopupY = contentTop;
+    const int maxPopupY = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - popupHeight;
+
+    if (popupY < minPopupY) popupY = minPopupY;
+    if (popupY > maxPopupY) popupY = maxPopupY;
+
     renderer.fillRect(popupX, popupY, popupWidth, popupHeight, false);
-    renderer.drawRect(popupX, popupY, popupWidth, popupHeight);
+    renderer.drawRect(popupX, popupY, popupWidth, popupHeight, true);
 
     for (int i = 0; i < MENU_ITEM_COUNT; i++) {
-      const int rowY = popupY + 16 + i * 40;
-      if (contextMenuIndex == static_cast<size_t>(i)) {
-        renderer.fillRect(popupX + 8, rowY - 4, popupWidth - 16, 28);
+      const int rowY = popupY + innerPadding + i * rowHeight;
+      const bool selected = (contextMenuIndex == static_cast<size_t>(i));
+
+      const int highlightY = rowY + 2;
+      const int highlightHeight = rowHeight - 4;
+
+      if (selected) {
+        renderer.fillRect(popupX + innerPadding,
+                          highlightY,
+                          popupWidth - innerPadding * 2,
+                          highlightHeight,
+                          true);
       }
-      renderer.drawText(UI_10_FONT_ID, popupX + 16, rowY, menuItems[i], contextMenuIndex != static_cast<size_t>(i));
+
+      renderer.drawText(UI_10_FONT_ID,
+                        popupX + innerPadding + 8,
+                        rowY + (rowHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2,
+                        menuItems[i],
+                        !selected);
     }
   }
 
