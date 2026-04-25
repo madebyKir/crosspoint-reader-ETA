@@ -739,7 +739,17 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   }
 
   int etaTextWidth = 0;
-  const int batterySize = SETTINGS.statusBarBattery ? (showBatteryPercentage ? 50 : 20) : 0;
+  int batterySize = 0;
+  if (SETTINGS.statusBarBattery) {
+    batterySize = metrics.batteryWidth;
+    if (showBatteryPercentage) {
+      // Reserve space for the widest battery percentage label (e.g. "100%")
+      batterySize += BaseTheme::batteryPercentSpacing + renderer.getTextWidth(SMALL_FONT_ID, "100%");
+    } else {
+      // Keep a small gap between battery icon and ETA text
+      batterySize += 5;
+    }
+  }
   if (!etaText.empty()) {
     const int etaTextX = metrics.statusBarHorizontalMargin + orientedMarginLeft + batterySize + 8;
     etaTextWidth = renderer.getTextWidth(SMALL_FONT_ID, etaText.c_str());
