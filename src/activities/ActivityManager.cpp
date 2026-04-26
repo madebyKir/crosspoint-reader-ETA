@@ -9,7 +9,9 @@
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
+#ifndef SIMULATOR
 #include "network/CrossPointWebServerActivity.h"
+#endif
 #include "reader/ReaderActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
@@ -165,7 +167,11 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 }
 
 void ActivityManager::goToFileTransfer() {
+#ifdef SIMULATOR
+  replaceActivity(std::make_unique<FullScreenMessageActivity>(renderer, mappedInput, "Not supported in simulator"));
+#else
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+#endif
 }
 
 void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
