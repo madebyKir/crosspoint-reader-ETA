@@ -863,11 +863,48 @@ void EpubReaderActivity::renderStatusBar() {
     title = epub->getTitle();
   }
 
-  const int remainingPages = std::max(0, section->pageCount - currentPage);
+  const int remainingChapterPages = std::max(0, section->pageCount - currentPage);
+  auto estimateRemainingBookPages = [this, remainingChapterPages]() -> std::optional<int> {
+    if (!epub) return std::nullopt;
+
+    int remaining = remainingChapterPages;
+    const int spineCount = epub->getSpineItemsCount();
+    for (int i = currentSpineIndex + 1; i < spineCount; i++) {
+      Section spineSection(epub, i, renderer);
+      if (!spineSection.loadSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
+                                        SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment,
+                                        SETTINGS.hyphenationEnabled)) {
+        return std::nullopt;
+      }
+      remaining += spineSection.pageCount;
+    }
+    return remaining;
+  };
+
+  auto formatEtaWithProgress = [bookProgress](const int totalMinutes) -> std::string {
+    const int safeMinutes = std::max(0, totalMinutes);
+    const int hours = safeMinutes / 60;
+    const int minutes = safeMinutes % 60;
+    const int progressPercent = std::clamp(static_cast<int>(bookProgress + 0.5f), 0, 100);
+
+    char etaBuffer[32];
+    snprintf(etaBuffer, sizeof(etaBuffer), "%dh %dm %d%%", hours, minutes, progressPercent);
+    return std::string(etaBuffer);
+  };
+
   std::string etaText;
-  if (SETTINGS.statusBarEta) {
-    const auto etaMinutes = etaTracker.updateAndGetMinutes(currentSpineIndex, section->currentPage, remainingPages);
-    etaText = etaMinutes ? (std::to_string(*etaMinutes) + " m") : "";
+  if (SETTINGS.statusBarEta == 1) {
+    const auto etaMinutes = etaTracker.updateAndGetMinutes(currentSpineIndex, section->currentPage, remainingChapterPages);
+    etaText = etaMinutes ? formatEtaWithProgress(*etaMinutes) : "";
+  } else if (SETTINGS.statusBarEta == 2) {
+    const auto remainingBookPages = estimateRemainingBookPages();
+    if (remainingBookPages) {
+      const auto etaMinutes = etaTracker.updateAndGetMinutes(currentSpineIndex, section->currentPage, *remainingBookPages);
+      etaText = etaMinutes ? formatEtaWithProgress(*etaMinutes) : "";
+    } else {
+      const auto etaMinutes = etaTracker.updateAndGetMinutes(currentSpineIndex, section->currentPage, remainingChapterPages);
+      etaText = etaMinutes ? formatEtaWithProgress(*etaMinutes) : "";
+    }
   }
 
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, etaText, 0, textYOffset);
