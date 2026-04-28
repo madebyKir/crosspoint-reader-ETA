@@ -112,8 +112,8 @@ void StatusBarSettingsActivity::handleSelection() {
     // Show Battery
     SETTINGS.statusBarBattery = (SETTINGS.statusBarBattery + 1) % 2;
   } else if (selectedIndex == 6) {
-    // Show Reading ETA
-    SETTINGS.statusBarEta = (SETTINGS.statusBarEta + 1) % 2;
+    // Reading ETA mode: Hide -> Chapter -> Book
+    SETTINGS.statusBarEta = (SETTINGS.statusBarEta + 1) % 3;
   }
   SETTINGS.saveToFile();
 }
@@ -148,7 +148,13 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
         } else if (index == 5) {
           return SETTINGS.statusBarBattery ? tr(STR_SHOW) : tr(STR_HIDE);
         } else if (index == 6) {
-          return SETTINGS.statusBarEta ? tr(STR_SHOW) : tr(STR_HIDE);
+          if (SETTINGS.statusBarEta == 2) {
+            return tr(STR_BOOK);
+          }
+          if (SETTINGS.statusBarEta == 1) {
+            return tr(STR_CHAPTER);
+          }
+          return tr(STR_HIDE);
         } else {
           return tr(STR_HIDE);
         }
@@ -166,7 +172,12 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
     title = tr(STR_EXAMPLE_CHAPTER);
   }
 
-  const std::string etaText = SETTINGS.statusBarEta ? "5 m" : "";
+  std::string etaText;
+  if (SETTINGS.statusBarEta == 2) {
+    etaText = "2h 15m 58%";
+  } else if (SETTINGS.statusBarEta == 1) {
+    etaText = "15m 58%";
+  }
   GUI.drawStatusBar(renderer, 75, 8, 32, title, etaText, verticalPreviewPadding);
 
   renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding,
